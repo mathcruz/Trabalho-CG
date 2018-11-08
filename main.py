@@ -190,11 +190,11 @@ class object3D(abstract_object):
 		faces.append(face_front)
 		faces.append(face_back)
 		for i in range(len(obj2d.faces[0])):
-			face = []
-			face.append([face_front[i][0], face_front[i][1], face_front[i][2]])
-			face.append([face_front[i - 1][0], face_front[i - 1][1], face_front[i - 1][2]])
-			face.append([face_back[((len(face_front)) - i)%len(face_back)][0], face_back[((len(face_front)) - i)%len(face_back)][1], face_back[((len(face_front)) - i)%len(face_back)][2]])
-			face.append([face_back[((len(face_front)) - i - 1)%len(face_back)][0], face_back[((len(face_front)) - i - 1)%len(face_back)][1], face_back[((len(face_front)) - i - 1)%len(face_back)][2]])
+			face = [[face_front[i][0], face_front[i][1], face_front[i][2]],
+				   [face_front[i - 1][0], face_front[i - 1][1], face_front[i - 1][2]],
+				   [face_back[((len(face_front)) - i)%len(face_back)][0], face_back[((len(face_front)) - i)%len(face_back)][1], face_back[((len(face_front)) - i)%len(face_back)][2]],
+				   [face_back[((len(face_front)) - i - 1)%len(face_back)][0], face_back[((len(face_front)) - i - 1)%len(face_back)][1], face_back[((len(face_front)) - i - 1)%len(face_back)][2]]
+			]
 			faces.append(face)
 		return object3D(faces)
 
