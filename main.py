@@ -14,6 +14,9 @@ BLUE = (0, 0, 255)
 GREEN = (0, 255, 0)
 RED = (255, 0, 0)
 
+ambient_light_color = (WHITE)
+ambient_light_intensity = 0.2
+
 # Iniciando os valores do SRD (Sistema de Referencia do Display)
 SRD = [800, 600]
 screen = pygame.display.set_mode(SRD)
@@ -31,6 +34,7 @@ class abstract_object(object):
 	def __init__(self):
 		self.faces = [[]]
 		self.dimension = 0
+		self.cor = [0, 0, 0]
 
 	def map(self, pontos):
 		novosPontos = []
@@ -59,12 +63,42 @@ class abstract_object(object):
 		matrix = self.apl_translate(x + self.faces[0][0][0], y + self.faces[0][0][1], self.apl_rotate(ang, self.apl_translate(-self.faces[0][0][0], -self.faces[0][0][1])))
 		self.transform(matrix)
 
+	def get_faces(self):
+		return np.copy(self.faces)
+
+	def get_edges(self):
+		edges = []
+		for face in faces:
+			for i in range(len(face)):
+				edge = [face[i], face[(i+1)%len(face)]]
+				edges.append(edge)
+		return edges
+
+	#Alterar para utilizar a função pronta da biblioteca numpy np.inner(a, b)
+	def inner_product(self, vector1, vector2):
+		result = 0
+		for i in range(len(vector1)):
+			result += vector1[i] * vector2[i]
+		return result
+
+	def norm(self, vector):
+		return math.sqrt(self.inner_product(vector, vector))
+
+	def cos(self, vector1, vector2):
+		return float(self.inner_product(vector1, vector2)/(self.norm(vector1) * self.norm(vector2)))
+
+	def ang(self, vector1, vector2):
+		return math.acos(sefl.get_cos(vector1, vector2))
+
+	def vector_product(self, vector1, vector2):
+		return np.cross(vector1, vector2)
 
 class object2D(abstract_object):
-	def __init__(self, pontos):
+	def __init__(self, pontos, cor):
 		super(abstract_object, self).__init__()
 		self.faces = [pontos]
 		self.dimension = 2
+		self.cor = cor
 
 	#cria uma translação a partir de uma matriz passada como parâmetro
 	def apl_translate(self, m, n,  matrix = np.identity(3)):
@@ -98,13 +132,14 @@ class object2D(abstract_object):
 	#desenha em wire frame
 	def draw(self):
 		for face in self.faces:
-			pygame.draw.aalines(screen, BLACK, True, self.map(face), 1)
+			pygame.draw.polygon(screen, BLACK, self.map(face), 1)
 
 class object3D(abstract_object):
-	def __init__(self, faces):
+	def __init__(self, faces, cor):
 		super(abstract_object, self).__init__()
 		self.faces = faces
 		self.dimension = 3
+		self.cor = cor
 
 	#cria uma translação a partir de uma matriz passada como parâmetro
 	def apl_translate(self, m, n, p,  matrix = np.identity(4)):
@@ -196,48 +231,84 @@ class object3D(abstract_object):
 				   [face_back[((len(face_front)) - i - 1)%len(face_back)][0], face_back[((len(face_front)) - i - 1)%len(face_back)][1], face_back[((len(face_front)) - i - 1)%len(face_back)][2]]
 			]
 			faces.append(face)
-		return object3D(faces)
+		return object3D(faces, obj2d.cor)
 
-	#projeção obliqua cavaleira
-	def projection(self):
-		m_t = [[1, 0, math.sqrt(2)/2, 0],
-			   [0, 1, math.sqrt(2)/2, 0],
+	#projeção obliqua
+	def projection(self, face, ang):
+		m_t = [[1, 0, math.cos(ang), 0],
+			   [0, 1, math.cos(ang), 0],
 			   [0, 0, 0, 0],
 			   [0, 0, 0, 1]
 			  ]
-		projected_faces = []
-		for face in self.faces:
-			f_aux = []
-			for i in range(len(face)):
-				a = [[face[i][0]], [face[i][1]], [face[i][2]], [1]]
-				a = np.dot(m_t, a)
-				f_aux.append([a[0], a[1]])
-			projected_faces.append(f_aux)
-		return projected_faces
+		f_aux = []
+		for i in range(len(face)):
+			a = [[face[i][0]], [face[i][1]], [face[i][2]], [1]]
+			a = np.dot(m_t, a)
+			f_aux.append([a[0], a[1]])
+		return f_aux
+
+	#projeção perspecticva 1 ponto de vista
+	def projection_perspec(self, face, zcp = -5):
+		m_t = [[1, 0, 0, 0],
+			   [0, 1, 0, 0],
+			   [0, 0, 0, 0],
+			   [0, 0, -1/zcp, 1]
+			  ]
+		f_aux = []
+		for i in range(len(face)):
+			a = [[face[i][0]], [face[i][1]], [face[i][2]], [1]]
+			a = np.dot(m_t, a)
+			f_aux.append([a[0], a[1]])
+		return f_aux
 
 	#desenha em wire frame
 	def draw(self):
-		projected_faces = self.projection()
-		for face in projected_faces:
-			pygame.draw.aalines(screen, BLACK, True, self.map(face), 1)
+		for face in self.faces:
+			pygame.draw.polygon(screen, BLACK, self.map(self.projection(face, 2.09)), 1)
+
+	def draw_shading(self, light_source):
+		for face in self.faces:
+			incidence_vector = [0, 0, 0]
+			v1 = [0, 0, 0]
+			v2 = [0, 0, 0]
+			for i in range(3):
+				incidence_vector[i] = float(light_source[i] - face[0][i])
+				v1[i] = float(face[1][i] - face[0][i])
+				v2[i] = float(face[2][i] - face[1][i])
+			norm_face = self.vector_product(v1, v2)
+#			incidence_vector = self.map_3d(incidence_vector)
+			if(self.inner_product([0, 0, 100], norm_face) < 0):
+#				print(self.cos(incidence_vector, norm_face))
+				new_color = [0, 0, 0]
+				for i in range(3):
+					aux = self.cos(norm_face, incidence_vector) * self.cor[i] + ambient_light_intensity * ambient_light_color[i]
+					if(aux < 0):
+						aux = 0
+					elif(aux > 255):
+						aux = 255
+					new_color[i] = aux
+				pygame.draw.polygon(screen, new_color, self.map(self.projection_perspec(face, 100)), 0)
 
 class dois(object2D):
-	def __init__(self):
+	def __init__(self, cor):
 		pontos = [[0,0], [0,2], [6,7], [2,7], [1,6], [0,7], [0,8], [1,9], [7,9], [8,8], [8,6], [3,2], [8,2], [8,0]]
-		super(dois, self).__init__(pontos)
+		super(dois, self).__init__(pontos, cor)
 
-fig = dois()
-quadrado = object2D([[0,0,10],[10,0,10],[10,10,10],[0,10,10]])
+fig = dois([255,140,0])
+quadrado = object2D([[0,0],[0,10],[10,10],[10,0], [0, 0]], [132, 42, 181])
 q3d = object3D.convert3d(quadrado)
+q3d.rotate_x(2.09)
 q3d.translate(50, 50, 5)
 #fig.translate(50, 50)
-fig2 = object3D([[[0,0,0],[10,0,0],[10,0,10],[0,0,10]],[[10,0,10],[10,0,0],[10,10,0],[10,10,10]],[[0,10,10],[10,10,10],[10,10,0],[0,10,0]],[[0,0,10],[0,10,10],[0,10,0],[0,0,0]],[[0,0,0],[0,10,0],[10,10,0],[10,0,0]],[[0,0,10],[10,0,10],[10,10,10],[0,10,10]]])
-#fig2.rotate_x(2.09)
+fig2 = object3D([[[0,0,0],[10,0,0],[10,0,10],[0,0,10]],[[10,0,10],[10,0,0],[10,10,0],[10,10,10]],[[0,10,10],[10,10,10],[10,10,0],[0,10,0]],[[0,0,10],[0,10,10],[0,10,0],[0,0,0]],[[0,0,0],[0,10,0],[10,10,0],[10,0,0]],[[0,0,10],[10,0,10],[10,10,10],[0,10,10]]], BLUE)
+teste = object3D([[[0,0,0],[10,0,0],[10,0,10],[0,0,10]],[[10,0,10],[10,0,0],[10,10,0],[10,10,10]],[[0,10,10],[10,10,10],[10,10,0],[0,10,0]],[[0,0,10],[0,10,10],[0,10,0],[0,0,0]],[[0,0,0],[0,10,0],[10,10,0],[10,0,0]],[[0,0,10],[10,0,10],[10,10,10],[0,10,10]]], GREEN)
+fig2.rotate_x(2.09)
 fig2.translate(80, 80, 2)
+teste.translate(40, 80, 2)
 fig2.draw()
 fig3 = object3D.convert3d(fig)
-fig3.rotate_y(0.5)
-fig3.apl_rotate_x(0.5)
+#fig3.rotate_y(0.5)
+#fig3.apl_rotate_x(0.5)
 fig3.translate(10, 10, 2)
 #fig2.rotate_y(1)
 #fig.animate(200,200,0)
@@ -265,12 +336,14 @@ while not done:
         fig2.animate(2*math.pi, max_state)
         fig3.animate(math.pi, max_state)
         q3d.animate(math.pi, max_state)
+        teste.animate(math.pi, max_state)
     else:
         state = 0
     fig.draw()
-    fig2.draw()
-    fig3.draw()
-    q3d.draw()
+    fig2.draw_shading([200, 200, -100])
+    fig3.draw_shading([200, 200, -100])
+    q3d.draw_shading([200, 200, -100])
+    teste.draw_shading([200, 200, -100])
     # Go ahead and update the screen with what we've drawn.
     # This MUST happen after all the other drawing commands.
     pygame.display.flip()
